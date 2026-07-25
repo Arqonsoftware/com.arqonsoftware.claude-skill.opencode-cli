@@ -114,6 +114,28 @@ blocking call, e.g.:
 while kill -0 <PID> 2>/dev/null; do sleep 5; done; tail -n 100 /path/to/scratch/opencode_run.log
 ```
 
+## Use a git worktree when the target repo has a live dev server watching it
+
+If the target repo has a running dev server / file watcher (a hot-reload build, `vite build
+--watch`, `wrangler dev`, etc.) that a human is actively using, do NOT run `opencode run
+--agent build` directly against that same working tree. A write-capable agent edits files
+incrementally over its whole run — for a bundled frontend this means the app can be in a
+broken, half-edited state (mismatched imports/usages, syntax errors) for the entire duration
+of the run, and since bundlers typically ship one JS bundle, a transient break in the file
+being edited can crash *every* route the user is looking at, not just the one being changed.
+
+Instead:
+1. Create a separate git worktree for the task: `git worktree add <path> -b <branch-name>`.
+2. Point `opencode run`'s prompt at that worktree path instead of the live directory (or `cd`
+   into it before invoking, whichever fits the task).
+3. Once the run finishes and passes lint/typecheck, merge the branch back or `git diff` it
+   into the main working tree, rather than letting the agent edit the live tree directly.
+4. Clean up the worktree (`git worktree remove <path>`) once done.
+
+This keeps the human's live dev server stable throughout the whole run instead of only
+being stable at the very end. Only skip this for read-only `explore`/investigation runs,
+which never write and so can't destabilize anything.
+
 ## Writing the task prompt
 
 Since opencode has zero memory of your conversation, the prompt must be fully self-contained:
