@@ -1,0 +1,13 @@
+{
+  "name": "opencode-cli-marketplace",
+  "owner": {
+    "name": "Arqonsoftware"
+  },
+  "plugins": [
+    {
+      "name": "opencode-cli",
+      "source": "./",
+      "description": "Teaches Claude Code how to drive the opencode CLI (models, agents, subagents) as a delegated coding tool"
+    }
+  ]
+}
