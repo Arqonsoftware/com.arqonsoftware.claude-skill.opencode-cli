@@ -46,6 +46,29 @@ usually shows up as a `-free` suffix on the model id (e.g. `provider/foo-flash-f
   option for the rest of the task and remember that preference for future picks in the same
   session.
 
+### Models observed to work well (update this list as you learn more)
+
+- **`opencode-go/minimax-m2.7`** — good default for real implementation work: fast, and
+  produced clean, correctly-scoped diffs (targeted fixes across multiple files, passed
+  lint/typecheck first try, didn't wander outside the requested scope) on a multi-file
+  responsive-design fix task. Cheaper/faster than reaching for a "pro"/flagship model by
+  default — try this first for implementation tasks before escalating.
+- **`opencode-go/kimi-k2.7-code`** — capable at diagnosing and fixing messy/inconsistent
+  existing code (e.g. reconciling a half-applied theming strategy into one consistent
+  approach), but flagged explicitly by the user as expensive — don't default to it; use it
+  when a task specifically needs stronger reasoning about a tangled existing implementation,
+  not for routine implementation work.
+- **`opencode/deepseek-v4-flash-free`** — solid for free-tier read-only exploration/audit
+  tasks (e.g. a prioritized mobile-responsiveness audit across ~10 files) — thorough and
+  correctly scoped for a report-only task.
+- **`opencode-go/deepseek-v4-pro`** — capable for implementation work but paid; no strong
+  signal yet that it outperforms `minimax-m2.7` for typical tasks, so prefer `minimax-m2.7`
+  first unless the user asks for this specifically.
+- If the user asks for a model that doesn't appear in `opencode models`' output (e.g. a
+  version number that doesn't exist), don't guess a substitute — tell them it's unavailable
+  and ask which of the actually-listed variants they want (`AskUserQuestion` if you have it,
+  otherwise just ask in text).
+
 ## Key commands
 
 - `opencode run [message..]` — non-interactive one-shot run. Key flags:
