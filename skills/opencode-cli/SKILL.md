@@ -22,6 +22,30 @@ context in the prompt.
      implementation agent (commonly named `build`), a `plan` agent, and read-only subagents
      such as `explore` or `general` that a primary agent can dispatch internally.
 
+## Picking a model
+
+`opencode models` output typically includes a mix of free-tier and paid models — the split
+usually shows up as a `-free` suffix on the model id (e.g. `provider/foo-flash-free` vs.
+`provider/foo-flash`). Match the model to the task, don't default to the biggest/priciest one:
+
+- **Read-only investigation / exploration / "just look into X and report back"** — use a free
+  or "flash"/"mini" tier model. These tasks are grep-and-read heavy, not reasoning-heavy, so a
+  cheap model does the job. Don't spend a premium model's budget on a task that's mostly file
+  reads.
+- **Real implementation work** (writing/editing code that needs to be correct, non-trivial
+  logic, cross-file consistency) — use a stronger paid model. Still pick the more
+  cost-effective option among the strong ones rather than reaching for the most expensive
+  model by default — check `opencode models` for what's available and ask the user if unsure
+  which paid tier they want to spend on, especially if one of the options is known to be
+  notably more expensive (e.g. a "pro"/flagship-labeled variant, or a model the user has
+  previously flagged as costly).
+- If the user names a specific model, use exactly that one — don't substitute your own
+  judgment for an explicit instruction. If they instead just say "use opencode" with no model
+  named, pick based on the task type above and briefly say which one and why.
+- If the user pushes back on a model choice as too expensive, swap to a cheaper capable
+  option for the rest of the task and remember that preference for future picks in the same
+  session.
+
 ## Key commands
 
 - `opencode run [message..]` — non-interactive one-shot run. Key flags:
