@@ -152,6 +152,27 @@ Since opencode has zero memory of your conversation, the prompt must be fully se
   issues found.
 - Instruction to report a concise summary of every file changed and what was done.
 
+## Watch for wandering — kill it if it's just reading, not editing
+
+Some models (observed with `kimi-k3` on a "polish this page's UI" task) will spend many
+minutes reading broadly unrelated files — READMEs, vendored library internals, unrelated
+config — without making any actual edits, especially on vaguely-scoped "make this look
+better"/"do a professional pass" style prompts. This wastes time and tokens for no output.
+
+- Periodically check `git diff --stat` (or `git status --short`) in the target directory
+  partway through a long run. If it's been running for several minutes with zero file changes
+  and the log shows it reading files unrelated to the stated task, it's very likely wandering,
+  not making progress — don't just wait it out.
+- If it's wandering, kill the process, tear down the worktree, and either retry with a more
+  tightly-scoped prompt (name the exact file(s) and exact issue(s) to fix, not "do a
+  professional pass") or just do the fix yourself directly if it's small enough that you
+  already understand exactly what's needed — don't re-delegate the same vague prompt to the
+  same or another model and hope for a different outcome.
+- Prefer concrete, itemized instructions ("fix X at line ~N: currently does A, should do B")
+  over open-ended aesthetic judgment calls ("make this look professional") — the latter is
+  exactly what tends to send a model reading through the whole codebase for context it
+  doesn't actually need, instead of just making the fix.
+
 ## Lessons learned
 
 - Treat a blocking foreground `opencode run` that returns an empty/rejected result as
