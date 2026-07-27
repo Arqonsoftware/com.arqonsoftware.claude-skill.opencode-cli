@@ -72,12 +72,66 @@ usually shows up as a `-free` suffix on the model id (e.g. `provider/foo-flash-f
 ## Key commands
 
 - `opencode run [message..]` — non-interactive one-shot run. Key flags:
+  - **positional `message` (preferred)** — the task prompt; pass as one argv so shell quoting
+    stays reliable (see “Passing the prompt” below)
   - `--agent <name>` — which agent drives the run (use the primary/implementation agent for
     real work, e.g. `build`)
   - `--model <provider>/<model>` — provider/model override, from `opencode models`
   - `--auto` — auto-approve permissions (needed for unattended/background runs — dangerous,
     only use when the task and directory scope are already trusted by the user)
-  - `--prompt` — alternative to passing the message positionally
+  - `--dir <path>` — project directory for the session (repo root you want edits in). Prefer
+    this over relying on the shell’s cwd alone when backgrounding.
+  - `--title <string>` — human-readable session title (helps when listing sessions later)
+  - `--prompt` — **avoid for long multi-line tasks when backgrounding**; prefer positional
+    message from a file (see below). Mis-wired `--prompt` + heredoc under `nohup` has been
+    observed to print `opencode run --help` and exit with no session.
+
+### Passing the prompt (critical — easy to get wrong)
+
+Long, multi-line prompts break easily under `nohup` / nested quotes. **Do not** rely on:
+
+```bash
+# BAD patterns observed to fail (CLI prints help, no agent starts):
+nohup opencode run --prompt "$(cat <<'EOF'
+...huge prompt...
+EOF
+)" ...
+```
+
+**Do this instead** — write the prompt to a file, pass it as a single positional argument:
+
+```bash
+PROMPT_FILE=/tmp/opencode/task-prompt.txt
+LOG=/tmp/opencode/task.log
+# write a full self-contained prompt into $PROMPT_FILE (heredoc to the file is fine)
+nohup opencode run \
+  --agent build \
+  --model <provider>/<model> \
+  --auto \
+  --dir /absolute/path/to/repo \
+  --title "short-task-label" \
+  "$(cat "$PROMPT_FILE")" \
+  > "$LOG" 2>&1 &
+echo "PID=$! LOG=$LOG"
+```
+
+**Smoke-check within ~3s** that the run actually started:
+
+- Log should show something like `> build · <model-name>` and/or `# Todos`, **not** the full
+  yargs help text for `opencode run`.
+- `ps -p $PID` should still be alive (or already finished with a real transcript, not help).
+- If the log is only help output, the argv never reached the agent — fix quoting and relaunch;
+  do not wait for a “stuck” job.
+
+### “Use kimi code / use opencode as a subagent”
+
+- User phrases like **“kimi code”**, **“kimi-k2.7-code”**, or **“opencode-go/kimi-k2.7-code”**
+  mean model id **`opencode-go/kimi-k2.7-code`** (confirm with `opencode models | grep -i kimi`).
+  Related ids seen on this install: `opencode-go/kimi-k2.6`, `opencode-go/kimi-k2.7-code`,
+  `opencode-go/kimi-k3`.
+- You still drive the **outer** shell yourself. “As a subagent” means: run `opencode run
+  --agent build` and **in the prompt** tell that primary agent to dispatch its **internal**
+  `explore` / `general` subagent first. You cannot shell out to `explore` directly.
 
 ## Getting opencode to use its explore/research subagents
 
@@ -87,7 +141,8 @@ this explicitly in the prompt text passed to `opencode run`, e.g.:
 
 > "First, dispatch your explore subagent to survey X, Y, Z. Then, based on that, implement ..."
 
-The primary agent will invoke the subagent on its own as part of executing the run.
+The primary agent will invoke the subagent on its own as part of executing the run. In logs
+you may see a line like `• Survey … Explore Agent` once it actually dispatched.
 
 ## Practical pattern: background + monitor, don't block
 
@@ -98,22 +153,35 @@ unknown. Always run it backgrounded with output to a log file, then watch the lo
 instead of blocking:
 
 ```bash
+PROMPT_FILE=/tmp/opencode/task-prompt.txt
+LOG=/tmp/opencode/task.log
 nohup opencode run \
   --agent build \
   --model <provider>/<model> \
   --auto \
-  "<full self-contained task prompt — see below>" \
-  > /path/to/scratch/opencode_run.log 2>&1 &
-echo "PID: $!"
+  --dir /absolute/path/to/repo \
+  --title "short-task-label" \
+  "$(cat "$PROMPT_FILE")" \
+  > "$LOG" 2>&1 &
+echo "PID=$! LOG=$LOG"
+# immediately verify it didn't just dump --help
+sleep 2
+head -20 "$LOG"
+ps -p $! -o pid,etime,cmd
 ```
 
 Then poll or use a monitoring tool against that PID/log rather than waiting on a single long
 blocking call, e.g.:
 
 ```bash
-while kill -0 <PID> 2>/dev/null; do sleep 5; done; tail -n 100 /path/to/scratch/opencode_run.log
+while kill -0 <PID> 2>/dev/null; do
+  sleep 15
+  # detect wandering: no edits after several minutes
+  git -C /absolute/path/to/repo status --short | head
+  tail -n 30 "$LOG"
+done
+tail -n 100 "$LOG"
 ```
-
 ## Use a git worktree when the target repo has a live dev server watching it
 
 If the target repo has a running dev server / file watcher (a hot-reload build, `vite build
@@ -183,3 +251,18 @@ better"/"do a professional pass" style prompts. This wastes time and tokens for 
 - `--auto` is required for unattended background runs (otherwise it blocks on interactive
   permission prompts), but only use it in directories/tasks the user has already trusted you
   with — it auto-approves file writes and other actions without per-step confirmation.
+- **Prompt argv vs help dump (2026-07):** Passing a huge multi-line string via `--prompt` under
+  `nohup` (especially with nested `$(cat <<'EOF')`) caused `opencode run` to print its help
+  text and exit without starting a session. **Reliable pattern:** write prompt to a file →
+  pass `"$(cat "$PROMPT_FILE")"` as the **positional** message → use `--dir` and `--title` →
+  smoke-check the log for `> build · …` within a few seconds.
+- **`--dir`:** Set the absolute repo path with `--dir` so background jobs don’t depend on
+  which directory the shell happened to be in when `nohup` started.
+- **User alias “kimi code”:** Map to `opencode-go/kimi-k2.7-code` after confirming with
+  `opencode models | grep -i kimi`. Still expensive — only when the user asked for it (e.g.
+  UI inconsistency / messy reconciliation), not as the default implementer.
+- **Subagent wording:** “Use opencode as a subagent” from the outer agent means spawn
+  `opencode run --agent build …` and tell *that* agent to use its explore subagent; there is
+  no separate outer CLI for `explore`.
+- When the skill gains new hard-won usage facts (CLI flags, broken quoting, model aliases),
+  **update this SKILL.md in the same turn** so the next session doesn’t re-learn them.
